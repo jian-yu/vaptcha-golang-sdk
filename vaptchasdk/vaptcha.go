@@ -50,7 +50,7 @@ const (
 )
 
 type vaptcha struct {
-	_id               int
+	id                int
 	key               string
 	isDown            bool
 	publicKey         string
@@ -78,7 +78,7 @@ type Vaptcha interface {
 
 func New(id int, key string) Vaptcha {
 	return &vaptcha{
-		_id:               id,
+		id:                id,
 		key:               key,
 		isDown:            false,
 		publicKey:         "",
@@ -90,7 +90,7 @@ func New(id int, key string) Vaptcha {
 func (v *vaptcha) Get_challenge(scene_id string) interface{} {
 	url := API_URL + GET_CHALLENGE_URL
 	now := v.To_unix_time()
-	query := "id=" + fmt.Sprintln(v._id) + "&scence=" + scene_id + "&time" + string(v.To_unix_time())
+	query := "id=" + fmt.Sprintln(v.id) + "&scence=" + scene_id + "&time" + string(v.To_unix_time())
 	signature := v.Hmac_sha1(v.key, query)
 	if !v.isDown {
 		_url := url + "?" + query + "&signature=" + signature
@@ -103,14 +103,14 @@ func (v *vaptcha) Get_challenge(scene_id string) interface{} {
 			v.lastCheckDownTime = 0
 			return v.Get_downtim_captcha()
 		}
-		return fmt.Sprintf("{"+"\"vid\":\"%s\",\"challenge\":\"%s\"}", string(v._id), string(challenge))
+		return fmt.Sprintf("{"+"\"vid\":\"%s\",\"challenge\":\"%s\"}", string(v.id), string(challenge))
 	} else if now-v.lastCheckDownTime > DOWNTIME_CHECK_TIME {
 		v.lastCheckDownTime = now
 		challenge := v.Get_request(url)
 		if challenge != "" && challenge != REQUEST_UESD_UP {
 			v.isDown = false
 			v.passedSignatures = ""
-			return fmt.Sprintf("{\"vid\":\"%s\",challenge\":\"%s\"}", string(v._id), string(challenge))
+			return fmt.Sprintf("{\"vid\":\"%s\",challenge\":\"%s\"}", string(v.id), string(challenge))
 		}
 		return v.Get_downtim_captcha()
 	}
@@ -131,7 +131,7 @@ func (v *vaptcha) Normal_validate(challenge, token, scene_id string) bool {
 		return false
 	}
 	url := API_URL + VALIDATE_URL
-	query := fmt.Sprintf("id=%s&scene=%s&token=%s&time=%s", v._id, scene_id, token, string(v.To_unix_time()))
+	query := fmt.Sprintf("id=%d&scene=%s&token=%s&time=%s", v.id, scene_id, token, string(v.To_unix_time()))
 	signature := v.Hmac_sha1(v.key, query)
 	response := v.Post_request(url, query+"&signature="+signature)
 	return response == "success"
@@ -164,7 +164,6 @@ func (v *vaptcha) Downtime_validate(token string) bool {
 
 	}
 	return false
-
 }
 func (v *vaptcha) Get_signature(_time int64) string {
 	now := v.To_unix_time()
