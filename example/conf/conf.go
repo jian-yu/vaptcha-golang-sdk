@@ -19,6 +19,7 @@ type Conf interface {
 	Get(key string) interface{}
 }
 
+//New 返回一个接口
 func New(confFilePath string) Conf {
 	confFile, err := ioutil.ReadFile(confFilePath)
 	if err != nil {
