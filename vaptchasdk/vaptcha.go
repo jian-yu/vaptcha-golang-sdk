@@ -1,3 +1,4 @@
+/*********** Package vaptchasdk for golang (第三方) **********/
 package vaptchasdk
 
 import (
@@ -8,6 +9,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +24,7 @@ const (
 	//V URL
 	API_URL = "http://api.vaptcha.com"
 	//获取流水号 Url
-	GET_CHALLENGE_URL = "/challenge"
+	GetChallenge_URL = "/challenge"
 	//验证 Url
 	VALIDATE_URL = "/validate"
 	//验证数量使用完
@@ -50,7 +52,7 @@ const (
 )
 
 type vaptcha struct {
-	id                int
+	id                string
 	key               string
 	isDown            bool
 	publicKey         string
@@ -58,27 +60,31 @@ type vaptcha struct {
 	passedSignatures  string
 }
 
+//Vaptcha 操作接口
 type Vaptcha interface {
-	Get_challenge(scene_id string) interface{}
-	Validate(challenge, token, scene_id string) bool
-	Downtime(data string)
-	Normal_validate(challenge, token, scene_id string) bool
-	Downtime_validate(token string) bool
-	Get_signature(_time int64) string
-	Down_time_check(time1 int64, time2 int64, signature, captcha string) string
-	Hmac_sha1(key, query string) string
-	Get_request(url string) string
-	Post_request(url, text string) string
-	Get_isdown() bool
-	Get_downtim_captcha() string
-	Get_public_key() string
-	To_unix_time() int64
-	Md5_encode(text string) string
+	GetChallenge(sceneID string) interface{}
+	Validate(challenge, token, sceneID string) bool
+	Downtime(data string) string
+	NormalValidate(challenge, token, sceneID string) bool
+	DowntimeValidate(token string) bool
+	GetSignature(_time int64) string
+	DownTimeCheck(time1 int64, time2 int64, signature, captcha string) string
+	HmacSHA1(key, query string) string
+	GetRequest(url string) string
+	PostRequest(url, text string) string
+	IsDown() bool
+	GetDowntimeVaptcha() string
+	GetPublicKey() string
+	GetUnixTime() int64
+	MD5Encrypt(text string) string
 }
 
-func New(id int, key string) Vaptcha {
+//New   返回操作接口
+//vid : 注册创建获取
+//key : 注册创建获取
+func New(vid, key string) Vaptcha {
 	return &vaptcha{
-		id:                id,
+		id:                vid,
 		key:               key,
 		isDown:            false,
 		publicKey:         "",
@@ -87,56 +93,90 @@ func New(id int, key string) Vaptcha {
 	}
 }
 
-func (v *vaptcha) Get_challenge(scene_id string) interface{} {
-	url := API_URL + GET_CHALLENGE_URL
-	now := v.To_unix_time()
-	query := "id=" + fmt.Sprintln(v.id) + "&scence=" + scene_id + "&time" + string(v.To_unix_time())
-	signature := v.Hmac_sha1(v.key, query)
+func (v *vaptcha) GetChallenge(sceneID string) interface{} {
+	url := API_URL + GetChallenge_URL
+	now := v.GetUnixTime()
+	query := "id=" + v.id + "&scene=" + sceneID + "&time=" + strconv.FormatInt(now, 10)
+	signature := v.HmacSHA1(v.key, query)
 	if !v.isDown {
 		_url := url + "?" + query + "&signature=" + signature
-		challenge := v.Get_request(_url)
-		predicate_one := challenge == REQUEST_UESD_UP
-		predicate_two := (!(challenge != "") && v.Get_isdown())
-		if predicate_one || predicate_two {
+		challenge := v.GetRequest(_url)
+		log.Println("challenge : " + challenge)
+		predicateOne := challenge == REQUEST_UESD_UP
+		predicateTwo := !(challenge != "") && v.IsDown()
+		if predicateOne || predicateTwo {
 			v.lastCheckDownTime = now
 			v.isDown = true
 			v.lastCheckDownTime = 0
-			return v.Get_downtim_captcha()
+			return v.GetDowntimeVaptcha()
 		}
-		return fmt.Sprintf("{"+"\"vid\":\"%s\",\"challenge\":\"%s\"}", string(v.id), string(challenge))
-	} else if now-v.lastCheckDownTime > DOWNTIME_CHECK_TIME {
+		return fmt.Sprintf("{\"vid\":\"%s\",\"challenge\":\"%s\"}", v.id, challenge)
+	}
+	if now-v.lastCheckDownTime > DOWNTIME_CHECK_TIME {
 		v.lastCheckDownTime = now
-		challenge := v.Get_request(url)
+		challenge := v.GetRequest(url)
 		if challenge != "" && challenge != REQUEST_UESD_UP {
 			v.isDown = false
 			v.passedSignatures = ""
-			return fmt.Sprintf("{\"vid\":\"%s\",challenge\":\"%s\"}", string(v.id), string(challenge))
+			return fmt.Sprintf("{\"vid\":\"%s\",challenge\":\"%s\"}", v.id, challenge)
 		}
-		return v.Get_downtim_captcha()
+		return v.GetDowntimeVaptcha()
 	}
+
 	return nil
 }
-func (v *vaptcha) Validate(challenge, token, scene_id string) bool {
+func (v *vaptcha) Validate(challenge, token, sceneID string) bool {
 	if !v.isDown && challenge != "" {
-		return v.Normal_validate(challenge, token, scene_id)
+		return v.NormalValidate(challenge, token, sceneID)
 	}
-	return v.Downtime_validate(token)
+	return v.DowntimeValidate(token)
 
 }
-func (v *vaptcha) Downtime(data string) {
+func (v *vaptcha) Downtime(data string) string {
+	if !(data != "") {
+		return "{\"error\":\"parms error\"}"
+	}
+	datas := strings.Split(data, ",")
+	if datas[0] == "request" {
+		return v.GetDowntimeVaptcha()
+	} else if datas[0] == "getsignature" {
+		if len(datas) < 2 {
+			return "{\"error\":\"parms error\"}"
+		}
+		if _time, err := strconv.ParseInt(datas[1], 10, 64); err == nil {
+			return v.GetSignature(_time)
+		}
+		return "{\"error\":\"parms error\"}"
 
+	} else if datas[0] == "check" {
+		if len(datas) < 5 {
+			return "{\"error\":\"parms error\"}"
+		}
+		time1, err := strconv.ParseInt(datas[1], 10, 64)
+		if err != nil {
+			return "{\"error\":\"parms error\"}"
+		}
+		time2, err := strconv.ParseInt(datas[2], 10, 64)
+		if err != nil {
+			return "{\"error\":\"parms error\"}"
+		}
+		signature := datas[3]
+		captcha := datas[4]
+		return v.DownTimeCheck(time1, time2, signature, captcha)
+	}
+	return "{\"error\":\"parms error\"}"
 }
-func (v *vaptcha) Normal_validate(challenge, token, scene_id string) bool {
-	if !(challenge != "") || !(token != "") || token != v.Md5_encode(v.key+"vaptcha"+challenge) {
+func (v *vaptcha) NormalValidate(challenge, token, sceneID string) bool {
+	if !(challenge != "") || !(token != "") || token != v.MD5Encrypt(v.key+"vaptcha"+challenge) {
 		return false
 	}
 	url := API_URL + VALIDATE_URL
-	query := fmt.Sprintf("id=%d&scene=%s&token=%s&time=%s", v.id, scene_id, token, string(v.To_unix_time()))
-	signature := v.Hmac_sha1(v.key, query)
-	response := v.Post_request(url, query+"&signature="+signature)
+	query := fmt.Sprintf("id=%s&scene=%s&token=%s&time=%s", v.id, sceneID, token, strconv.FormatInt(v.GetUnixTime(), 10))
+	signature := v.HmacSHA1(v.key, query)
+	response := v.PostRequest(url, query+"&signature="+signature)
 	return response == "success"
 }
-func (v *vaptcha) Downtime_validate(token string) bool {
+func (v *vaptcha) DowntimeValidate(token string) bool {
 	if !(token != "") {
 		return false
 	}
@@ -144,13 +184,13 @@ func (v *vaptcha) Downtime_validate(token string) bool {
 	if len(strs) < 2 {
 		return false
 	}
-	_time, _ := strconv.Atoi(strs[0])
+	_time, _ := strconv.ParseInt(strs[0], 10, 64)
 	signature := strs[1]
-	now := v.To_unix_time()
-	if now-int64(_time) > VALIDATE_PASS_TIME {
+	now := v.GetUnixTime()
+	if now-_time > VALIDATE_PASS_TIME {
 		return false
 	}
-	signatureTrue := v.Md5_encode(string(_time) + v.key + "vaptcha")
+	signatureTrue := v.MD5Encrypt(string(_time) + v.key + "vaptcha")
 	if signature == signatureTrue {
 		if strings.Count(v.passedSignatures, signature) != 0 {
 			return false
@@ -159,45 +199,46 @@ func (v *vaptcha) Downtime_validate(token string) bool {
 		length := len(v.passedSignatures)
 		if length > MAX_LENGTH {
 			v.passedSignatures = strings.Replace(v.passedSignatures, v.passedSignatures[0:length-MAX_LENGTH+1], "", 1)
-			return true
-		}
+			log.Printf("passedSignatures :%s", v.passedSignatures)
 
+		}
+		return true
 	}
 	return false
 }
-func (v *vaptcha) Get_signature(_time int64) string {
-	now := v.To_unix_time()
+func (v *vaptcha) GetSignature(_time int64) string {
+	now := v.GetUnixTime()
 	if now-_time > REQUEST_ABATE_TIME {
 		return ""
 	}
-	signature := v.Md5_encode(string(now) + v.key)
-	return fmt.Sprintf("{\"time\":\"%s\",signature\":\"%s\"}", string(now), signature)
+	signature := v.MD5Encrypt(strconv.FormatInt(now, 10) + v.key)
+	return fmt.Sprintf("{\"time\":\"%s\",signature\":\"%s\"}", strconv.FormatInt(now, 10), signature)
 
 }
-func (v *vaptcha) Down_time_check(time1 int64, time2 int64, signature, captcha string) string {
-	now := v.To_unix_time()
-	if now-time1 > REQUEST_ABATE_TIME || signature != v.Md5_encode(string(time2)+v.key) ||
+func (v *vaptcha) DownTimeCheck(time1 int64, time2 int64, signature, captcha string) string {
+	now := v.GetUnixTime()
+	if now-time1 > REQUEST_ABATE_TIME || signature != v.MD5Encrypt(string(time2)+v.key) ||
 		now-time2 < VALIDATE_WAIT_TIME {
 		return "{\"result\":false}"
 	}
-	trueCaptcha := v.Md5_encode(string(time1) + v.key)[0:3]
-	if trueCaptcha == strings.ToLower(string(captcha)) {
-		return fmt.Sprintf("{\"result\":true,\"token\":\"%s\",%s}", string(now), v.Md5_encode(string(now)+v.key+"vaptcha"))
+	trueCaptcha := v.MD5Encrypt(string(time1) + v.key)[0:3]
+	if trueCaptcha == strings.ToLower(captcha) {
+		return fmt.Sprintf("{\"result\":true,\"token\":\"%s\",%s}", strconv.FormatInt(now, 10), v.MD5Encrypt(strconv.FormatInt(now, 10)+v.key+"vaptcha"))
 	}
 	return "{\"result\":false}"
 
 }
-func (v *vaptcha) Hmac_sha1(key, query string) string {
+func (v *vaptcha) HmacSHA1(key, text string) string {
 	mac := hmac.New(sha1.New, []byte(key))
-	mac.Write([]byte(query))
+	mac.Write([]byte(text))
 	encryptsBytes := mac.Sum(nil)
 	signature := base64.StdEncoding.EncodeToString(encryptsBytes)
-	signature = strings.Replace(signature, "=", "", -1)
-	signature = strings.Replace(signature, "/", "", -1)
-	result := strings.Replace(signature, "+", "", -1)
-	return result
+	signature = strings.Replace(
+		strings.Replace(
+			strings.Replace(signature, "=", "", -1), "+", "", -1), "/", "", -1)
+	return signature
 }
-func (v *vaptcha) Get_request(url string) string {
+func (v *vaptcha) GetRequest(url string) string {
 	resp, err := http.Get(url)
 	if err != nil {
 		return ""
@@ -209,7 +250,7 @@ func (v *vaptcha) Get_request(url string) string {
 	}
 	return string(body)
 }
-func (v *vaptcha) Post_request(url, text string) string {
+func (v *vaptcha) PostRequest(url, text string) string {
 	buf := bytes.NewBuffer([]byte(text))
 	resp, err := http.Post(url, "application/json", buf)
 	if err != nil {
@@ -223,34 +264,34 @@ func (v *vaptcha) Post_request(url, text string) string {
 	return string(body)
 }
 
-func (v *vaptcha) Get_isdown() bool {
-	result := v.Get_request(IS_DOWN_PATH)
-	if result == "" {
-		return false
-	}
-	return true
+func (v *vaptcha) IsDown() bool {
+	result := v.GetRequest(IS_DOWN_PATH)
+	return result != ""
 }
-func (v *vaptcha) Get_downtim_captcha() string {
-	now := v.To_unix_time()
-	md5 := v.Md5_encode(string(now) + v.key)
+func (v *vaptcha) GetDowntimeVaptcha() string {
+	now := v.GetUnixTime()
+	md5 := v.MD5Encrypt(strconv.FormatInt(now, 10) + v.key)
 	captcha := md5[0:3]
 	verificationKey := md5[30:]
 	if !(v.publicKey != "") {
-		v.publicKey = v.Get_public_key()
+		v.publicKey = v.GetPublicKey()
 	}
-	url := v.Md5_encode(captcha+verificationKey+v.Get_public_key()) + PIC_POST_FIX
+	url := v.MD5Encrypt(
+		captcha+verificationKey+v.GetPublicKey()) + PIC_POST_FIX
 	url = DOWN_TIME_PATH + url
-	return fmt.Sprintf("{"+"\"time:\":\"%s\",\"url\":\"%s\"}", string(now), string(url))
+	return fmt.Sprintf("{"+"\"time:\":\"%s\",\"url\":\"%s\"}", strconv.FormatInt(now, 10), url)
 }
-func (v *vaptcha) Get_public_key() string {
-	return v.Get_request(PUBLIC_KEY_PATH)
+func (v *vaptcha) GetPublicKey() string {
+	return v.GetRequest(PUBLIC_KEY_PATH)
 }
 
-func (v *vaptcha) To_unix_time() int64 {
+func (v *vaptcha) GetUnixTime() int64 {
 	//将纳秒转换为毫秒
-	return (time.Now().UnixNano() / 1e6)
+	return time.Now().UnixNano() / 1e6
 }
-func (v *vaptcha) Md5_encode(text string) string {
-	data := md5.Sum([]byte(text))
-	return string(data[:])
+func (v *vaptcha) MD5Encrypt(text string) string {
+	h := md5.New()
+	h.Write([]byte(text))
+	data := h.Sum(nil)
+	return fmt.Sprintf("md5 : %x", data)
 }
