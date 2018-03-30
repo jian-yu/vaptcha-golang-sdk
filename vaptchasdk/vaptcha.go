@@ -101,7 +101,6 @@ func (v *vaptcha) GetChallenge(sceneID string) interface{} {
 	if !v.isDown {
 		_url := url + "?" + query + "&signature=" + signature
 		challenge := v.GetRequest(_url)
-		log.Println("challenge : " + challenge)
 		predicateOne := challenge == REQUEST_UESD_UP
 		predicateTwo := !(challenge != "") && v.IsDown()
 		if predicateOne || predicateTwo {
@@ -252,7 +251,7 @@ func (v *vaptcha) GetRequest(url string) string {
 }
 func (v *vaptcha) PostRequest(url, text string) string {
 	buf := bytes.NewBuffer([]byte(text))
-	resp, err := http.Post(url, "application/json", buf)
+	resp, err := http.Post(url, "application/x-www-form-urlencoded", buf)
 	if err != nil {
 		return ""
 	}
@@ -293,5 +292,5 @@ func (v *vaptcha) MD5Encrypt(text string) string {
 	h := md5.New()
 	h.Write([]byte(text))
 	data := h.Sum(nil)
-	return fmt.Sprintf("md5 : %x", data)
+	return fmt.Sprintf("%x", data)
 }
