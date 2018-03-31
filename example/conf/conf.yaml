@@ -1,3 +1,4 @@
 # [vaptcha官网控制台](https://www.vaptcha.com/manage)
-vid: 
-key:
+# 以下vid和key来自于vaptcha官网SDK，仅用于测试，生产环境请自行向((https://www.vaptcha.com)申请
+vid: 5ab602a8a485d50410b77fc2
+key: f59799c40bc8487ea3c108b60769a3af

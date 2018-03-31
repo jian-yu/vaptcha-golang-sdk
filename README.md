@@ -15,4 +15,4 @@ go get gopkg.in/yaml.v2
 
 #### Step2.步骤
 
-- 请参照example包中的代码注释
+- 请参照example包mian.go中的代码注释
