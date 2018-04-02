@@ -15,8 +15,6 @@ go get gopkg.in/yaml.v2
 
 #### Step2.步骤
 
-- ```shell
-go get https://github.com/jian-yu/vaptcha-golang-sdk
-```
+- ```shell go get https://github.com/jian-yu/vaptcha-golang-sdk ```
 
 - 请参照example包mian.go中的代码注释
